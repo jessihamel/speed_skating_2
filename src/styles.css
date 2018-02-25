@@ -1,0 +1,27 @@
+body {
+  background: #ced6d1;
+}
+
+select {
+  background: #F8F4E4;
+}
+
+circle {
+  fill: #EEBF48;
+  stroke: #4E3F30;
+}
+
+.mountain {
+  fill: #4E3F30;
+}
+
+.snow {
+  fill: #F8F4E4;
+}
+
+.xAxis path, .yAxis path, .tick line {
+  stroke: #1f1913;
+}
+.tick text {
+  fill: #1f1913;
+}

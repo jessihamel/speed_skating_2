@@ -1,12 +1,14 @@
+import styles from './styles.css'
 import data from './data/speed_skating_results.csv'
-import {select} from 'd3-selection'
+import {select, event} from 'd3-selection'
 import {scaleLinear, scalePoint} from 'd3-scale'
-import {extent} from 'd3-array'
+import {extent, max, bisect} from 'd3-array'
 import {transition} from 'd3-transition'
 import {axisLeft, axisBottom} from 'd3-axis'
 
-const margin = {top: 15, bottom: 20, left: 50, right: 20}
+const margin = {top: 15, bottom: 20, left: 50, right: 50}
 const radius = 6
+const filteredData = data.filter(d => +d.year >= 1964)
 
 class Graph {
   constructor() {
@@ -14,12 +16,12 @@ class Graph {
     this.years = this.getYears()
     this.initControls()
     this.initViz()
-    window.onresize = this.initViz
+    window.onresize = this.initViz.bind(this)
   }
 
   nestData() {
     const dataByEvent = {}
-    data.forEach(d => {
+    filteredData.forEach(d => {
       d.year = + d.year
       if (!d.timeFormat) {
         d.time = null
@@ -38,7 +40,7 @@ class Graph {
   }
 
   getYears() {
-    return data.reduce((a,b) => {
+    return filteredData.reduce((a,b) => {
       a[b.year] = {location: b.location, altitude: b.altitude, year: b.year}
       return a
     }, {})
@@ -57,11 +59,15 @@ class Graph {
   }
 
   initViz() {
-    this.width = Math.min(window.innerWidth, 1000)
-    this.height = 360
+    select('.viz').selectAll("*").remove()
+    this.width = window.innerWidth
+    this.height = 330
+    this.xDomain = Object.keys(this.years)
+    this.xRange = [margin.left, this.width - margin.right]
     this.xScale = scalePoint()
-      .domain(Object.keys(this.years))
-      .range([margin.left, this.width - margin.right])
+      .domain(this.xDomain)
+      .range(this.xRange)
+      .padding(this.width / 10)
     this.viz1 = this.drawSVG('viz-1')
     this.viz2 = this.drawSVG('viz-2')
     this.drawEvent(0)
@@ -101,12 +107,12 @@ class Graph {
       .attr('r', radius)
       .attr('opacity', 1)
 
-    const leftAxis = axisLeft().scale(this.yScale).ticks(5)
+    const leftAxis = axisLeft().scale(this.yScale).ticks(5).tickSizeOuter(0)
     this.viz1.select('.yAxis')
       .attr('transform', `translate(${margin.left}, 0)`)
       .transition()
       .call(leftAxis)
-    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d)
+    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d).tickSizeOuter(0)
     this.viz1.select('.xAxis')
       .attr('transform', `translate(0, ${this.height - margin.bottom})`)
       .call(bottomAxis)
@@ -114,10 +120,14 @@ class Graph {
 
   drawAltitudes() {
     const venues = Object.keys(this.years).map(k => this.years[k])
+      .sort((a,b) => b.altitude - a.altitude)
+    const altitudeDomain = [0, max(venues, d => +d.altitude)]
     this.yScaleAltitudes = scaleLinear()
-      .domain(extent(venues, d => +d.altitude))
+      .domain(altitudeDomain)
       .range([this.height - margin.bottom, margin.top])
-
+    this.stepScale = scaleLinear()
+        .domain(altitudeDomain)
+        .range([this.xScale.step() / 5, this.xScale.step()])
     const altitudeGroups = this.viz2.selectAll('g.altitudes').data(venues)
       .enter()
       .append('g')
@@ -125,28 +135,65 @@ class Graph {
 
     this.drawMountains(altitudeGroups)
 
-    const leftAxis = axisLeft().scale(this.yScaleAltitudes).ticks(5)
+    const leftAxis = axisLeft().scale(this.yScaleAltitudes).ticks(5).tickSizeOuter(0)
     this.viz2.select('.yAxis')
       .attr('transform', `translate(${margin.left}, 0)`)
       .transition()
       .call(leftAxis)
-    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d)
+    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d).tickSizeOuter(0)
     this.viz2.select('.xAxis')
       .attr('transform', `translate(0, ${this.height - margin.bottom})`)
       .call(bottomAxis)
+
+    select('.viz').on('mousemove', () => {
+      const mouseX = event.clientX - (this.xScale.step() / 2)
+      const hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), mouseX)]
+      console.log(hoveredYear)
+    })
+
   }
 
   drawMountains(groups) {
-    const scaleStep = this.xScale.step()
     groups.append('path')
-      .attr('d', d => {
-        const apexX = this.xScale(d.year)
-        const apexY = this.yScaleAltitudes(d.altitude)
-        const baseY = this.yScaleAltitudes(0)
-        return `M${apexX} ${apexY} L${apexX + scaleStep} ${baseY} L${apexX - scaleStep} ${baseY} Z`
+      .attr('d', d => this.generateMountain(d))
+      .attr('opacity', 0.9)
+      .classed('mountain', true)
+    groups.append('path')
+      .attr('d', d => this.generateSnow(d))
+      .attr('transform', d => {
+        const translateY = Math.max(
+          (this.height - margin.bottom - this.yScaleAltitudes(d.altitude)) * 0.05,
+          2
+        )
+        return `translate(0, ${Math.round(translateY)})`
       })
-      .attr('fill', 'darkbrown')
-      .attr('opacity', 0.4)
+      .attr('opacity', 0.92)
+      .classed('snow', true)
+  }
+
+  generateMountain(d) {
+    const scaleStep = this.stepScale(d.altitude)
+    const apexX = this.xScale(d.year)
+    const apexY = this.yScaleAltitudes(d.altitude)
+    const baseY = this.yScaleAltitudes(0)
+    return `M${apexX} ${apexY} L${apexX + scaleStep} ${baseY} L${apexX - scaleStep} ${baseY} Z`
+  }
+
+  generateSnow(d) {
+    const snowSize = 0.4
+    const snowWaviness = 8
+    const scaleStep = this.stepScale(d.altitude)
+    const apexX = this.xScale(d.year)
+    const apexY = this.yScaleAltitudes(d.altitude)
+    const baseY = this.yScaleAltitudes(0)
+    const snowLineX0 = apexX + (scaleStep * snowSize)
+    const snowLineX1 = apexX - (scaleStep * snowSize)
+    const snowLineY = (this.yScaleAltitudes(d.altitude * (1 - snowSize)))
+    const cpx0 = (snowLineX0 + apexX) / 2
+    const cpy0 = snowLineY - (snowLineY - apexY) / snowWaviness
+    const cpx1 = (snowLineX1 + apexX) / 2
+    const cpy1 = snowLineY + (snowLineY - apexY) / snowWaviness
+    return `M${apexX} ${apexY} L${snowLineX0} ${snowLineY} Q${cpx0} ${cpy0}, ${apexX} ${snowLineY} Q ${cpx1} ${cpy1}, ${snowLineX1} ${snowLineY} Z`
   }
 
 }
