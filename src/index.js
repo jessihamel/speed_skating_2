@@ -10,7 +10,7 @@ import skater from './speed_skater.svg';
 
 const eventsToInclude = ["500m Men","1500m Men","5000m Men","10000m Men","500m Women","1000m Women","1500m Women","3000m Women","1000m Men","5000m Women"]
 const yearsWith2X500M = [1998, 2002, 2006, 2010, 2014]
-const margin = {top: 35, bottom: 35, left: 80, right: 60}
+const margin = {top: 35, bottom: 52, left: 80, right: 60}
 const radius = 9
 const flagHeight = 15
 const poleHeight = 12
@@ -101,7 +101,6 @@ class Graph {
   }
 
   drawSVG(className, yAxisLabel) {
-    console.log(yAxisLabel)
     const viz = select('.viz').append('svg').classed(className, true)
       .attr('width', this.width)
       .attr('height', this.height)
@@ -113,6 +112,10 @@ class Graph {
       .text(yAxisLabel)
       .attr('transform', `translate(${-this.height / 2}, 26)`)
       .attr('text-anchor', 'middle')
+    viz.append('g').classed('stat-label', true)
+      .attr('transform', `translate(${margin.left}, ${this.height})`)
+      .append('text')
+      .attr('dy', '-0.5em')
     return viz
   }
 
@@ -191,7 +194,6 @@ class Graph {
         this.hoveredYear = null
       }
     })
-
   }
 
   drawMountains(groups) {
@@ -239,6 +241,7 @@ class Graph {
     this.drawFlag()
     this.highlightMedal()
     this.highlightMountain()
+    this.showStatLabels()
   }
 
   highlightMedal() {
@@ -253,6 +256,23 @@ class Graph {
   highlightMountain() {
     this.viz2.selectAll('g.altitudes')
       .classed('selected', d => d.year == this.hoveredYear ? true : false)
+  }
+
+  showStatLabels() {
+    if (this.width < 450) {
+      this.viz1.select('.stat-label text').text('')
+      this.viz2.select('.stat-label text').text('')
+      return
+    }
+    const medalDatum = this.currentEventData.find(d => {
+      return d.year == this.hoveredYear && d.medal === 'GOLD'
+    })
+    const asterix = this.isDoubleYear(medalDatum) ? '*' : ''
+    const yearDatum = this.years[this.hoveredYear]
+    const text0 = `Time: ${medalDatum.timeFormat}${asterix} | Althlete: ${medalDatum.athlete}`
+    const text1 = `${yearDatum.location} | Altitude: ${yearDatum.altitude}m`
+    this.viz1.select('.stat-label text').text(text0)
+    this.viz2.select('.stat-label text').text(text1)
   }
 
   drawFlag() {

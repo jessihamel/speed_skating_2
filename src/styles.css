@@ -119,6 +119,10 @@ text {
   font-weight: 500;
 }
 
+.stat-label text{
+  font-size: 14px;
+}
+
 @media only screen and (max-width: 670px) {
   .xAxis .tick:nth-child(odd) {
     display: none;
