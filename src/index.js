@@ -6,19 +6,23 @@ import {extent, max, bisect} from 'd3-array'
 import {transition} from 'd3-transition'
 import {axisLeft, axisBottom} from 'd3-axis'
 import {easeLinear, easeSinIn, easeSinOut} from 'd3-ease'
+import skater from './speed_skater.svg';
 
 const eventsToInclude = ["500m Men","1500m Men","5000m Men","10000m Men","500m Women","1000m Women","1500m Women","3000m Women","1000m Men","5000m Women"]
 const yearsWith2X500M = [1998, 2002, 2006, 2010, 2014]
-const margin = {top: 35, bottom: 20, left: 50, right: 50}
-const radius = 6
+const margin = {top: 35, bottom: 35, left: 80, right: 60}
+const radius = 9
 const flagHeight = 15
 const poleHeight = 12
 const flagWidth = 22
 const flagWaviness = 3
-const vizPadding = 30
+const smallWidth = 600
 const filteredData = data.filter(d => {
   return +d.year >= 1964 && eventsToInclude.indexOf(d.event) !== -1
 })
+
+const skaterImg = document.getElementById('skater')
+skaterImg.src = skater
 
 class Graph {
   constructor() {
@@ -44,10 +48,8 @@ class Graph {
         const seconds = parseFloat(parseTime[1])
         d.time = (minutes * 60) + seconds
       }
-      if (d.event === "500m Men" || d.event === "500m Women") {
-        if (yearsWith2X500M.indexOf(d.year) !== -1) {
-          d.time /= 2
-        }
+      if (this.isDoubleYear(d)) {
+        d.time /= 2
       }
       if (!dataByEvent[d.event]) {
         dataByEvent[d.event] = []
@@ -70,7 +72,7 @@ class Graph {
       .enter()
       .append('option')
       .attr('value', d => d)
-      .html(d => d)
+      .html(d => (d === '500m Men' || d === '500m Women') ? `${d}*` : d)
     controls.on('change', (d, i, node) => {
       const currentEventIdx = node[0].selectedIndex
       this.currentEventData = this.data[Object.keys(this.data)[currentEventIdx]]
@@ -80,16 +82,16 @@ class Graph {
 
   initViz() {
     select('.viz').selectAll("*").remove()
-    this.width = window.innerWidth - vizPadding
-    this.height = 300
+    this.width = select('.viz').node().getBoundingClientRect().width
+    this.height = this.width < smallWidth ? 180 : 300
     this.xDomain = Object.keys(this.years)
     this.xRange = [margin.left, this.width - margin.right]
     this.xScale = scalePoint()
       .domain(this.xDomain)
       .range(this.xRange)
       .padding(this.width / 10)
-    this.viz1 = this.drawSVG('viz-1')
-    this.viz2 = this.drawSVG('viz-2')
+    this.viz1 = this.drawSVG('viz-1', 'Time (seconds)')
+    this.viz2 = this.drawSVG('viz-2', this.width < smallWidth ? 'Venue Altitude (m)' : 'Olypmic Venue Altitude (meters)')
     this.currentEventData = this.data[Object.keys(this.data)[0]]
     this.drawEvent()
     this.drawAltitudes()
@@ -98,12 +100,19 @@ class Graph {
       g.append('path').classed('flying-flag', true)
   }
 
-  drawSVG(className) {
+  drawSVG(className, yAxisLabel) {
+    console.log(yAxisLabel)
     const viz = select('.viz').append('svg').classed(className, true)
       .attr('width', this.width)
       .attr('height', this.height)
     viz.append('g').classed('yAxis', true)
     viz.append('g').classed('xAxis', true)
+    viz.append('g').classed('yAxis-label', true)
+      .attr('transform', 'rotate(-90)')
+      .append('text')
+      .text(yAxisLabel)
+      .attr('transform', `translate(${-this.height / 2}, 26)`)
+      .attr('text-anchor', 'middle')
     return viz
   }
 
@@ -135,7 +144,7 @@ class Graph {
       .attr('transform', `translate(${margin.left}, 0)`)
       .transition()
       .call(leftAxis)
-    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d).tickSizeOuter(0)
+    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d).tickSizeOuter(0).tickSizeInner(12)
     this.viz1.select('.xAxis')
       .attr('transform', `translate(0, ${this.height - margin.bottom})`)
       .call(bottomAxis)
@@ -163,7 +172,7 @@ class Graph {
       .attr('transform', `translate(${margin.left}, 0)`)
       .transition()
       .call(leftAxis)
-    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d).tickSizeOuter(0)
+    const bottomAxis = axisBottom().scale(this.xScale).tickFormat(d => d).tickSizeOuter(0).tickSizeInner(12)
     this.viz2.select('.xAxis')
       .attr('transform', `translate(0, ${this.height - margin.bottom})`)
       .call(bottomAxis)
@@ -188,7 +197,6 @@ class Graph {
   drawMountains(groups) {
     groups.append('path')
       .attr('d', d => this.generateMountain(d))
-      .attr('opacity', 0.9)
       .classed('mountain', true)
     groups.append('path')
       .attr('d', d => this.generateSnow(d))
@@ -230,6 +238,7 @@ class Graph {
     clearTimeout(this.flagTimeout)
     this.drawFlag()
     this.highlightMedal()
+    this.highlightMountain()
   }
 
   highlightMedal() {
@@ -238,7 +247,12 @@ class Graph {
     })
     this.viz1.selectAll('circle')
       .attr('r', d => d.year == this.hoveredYear ? radius + 2 : radius)
-      .style('fill', d => d.year == this.hoveredYear ? '#EEBF48' : '#F8F4E4')
+      .classed('selected', d => d.year == this.hoveredYear ? true : false)
+  }
+
+  highlightMountain() {
+    this.viz2.selectAll('g.altitudes')
+      .classed('selected', d => d.year == this.hoveredYear ? true : false)
   }
 
   drawFlag() {
@@ -282,6 +296,15 @@ class Graph {
     .on('end', () => {
       this.flagTimeout = window.setTimeout(() => this.waveFlag(flagGroup), 700)
     })
+  }
+
+  isDoubleYear(d) {
+    if (d.event === "500m Men" || d.event === "500m Women") {
+      if (yearsWith2X500M.indexOf(d.year) !== -1) {
+        return true
+      }
+    }
+    return false
   }
 
 }
