@@ -1,13 +1,49 @@
+@import url('./reset.css');
+@import url('https://fonts.googleapis.com/css?family=Source+Sans+Pro');
+
 body {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 14px;
+  color: #1f1913;
   background: #ced6d1;
 }
 
-select {
-  background: #F8F4E4;
+header {
+  display: flex;
+  padding: 20px;
+  width: 90%;
+  margin-left: 5%;
+}
+h1 {
+  font-size: 24px;
+  text-transform: uppercase;
+  text-align: right;
+  min-width: 200px;
+  padding-right: 20px;
+  line-height: 120%;
+}
+.header-2 {
+  font-size: 15px;
+  line-height: 115%;
+}
+.header-2 p {
+  margin-bottom: 1em;
 }
 
-circle {
-  fill: #EEBF48;
+.viz {
+  margin: 0 30px;
+}
+
+select {
+  margin: 0 30px;
+  min-width: 350px;
+  background: #FCFAF4;
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 14px;
+}
+
+.viz-1 circle {
+  fill: #ECE7D8;
   stroke: #4E3F30;
 }
 
@@ -24,4 +60,18 @@ circle {
 }
 .tick text {
   fill: #1f1913;
+}
+
+.flag line {
+  stroke: #1f1913;
+}
+
+.flag .flying-flag {
+  fill: #EEBF48;
+  stroke: #1f1913;
+}
+
+text {
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 12px;
 }

@@ -5,18 +5,31 @@ import {scaleLinear, scalePoint} from 'd3-scale'
 import {extent, max, bisect} from 'd3-array'
 import {transition} from 'd3-transition'
 import {axisLeft, axisBottom} from 'd3-axis'
+import {easeLinear, easeSinIn, easeSinOut} from 'd3-ease'
 
-const margin = {top: 15, bottom: 20, left: 50, right: 50}
+const eventsToInclude = ["500m Men","1500m Men","5000m Men","10000m Men","500m Women","1000m Women","1500m Women","3000m Women","1000m Men","5000m Women"]
+const yearsWith2X500M = [1998, 2002, 2006, 2010, 2014]
+const margin = {top: 35, bottom: 20, left: 50, right: 50}
 const radius = 6
-const filteredData = data.filter(d => +d.year >= 1964)
+const flagHeight = 15
+const poleHeight = 12
+const flagWidth = 22
+const flagWaviness = 3
+const vizPadding = 30
+const filteredData = data.filter(d => {
+  return +d.year >= 1964 && eventsToInclude.indexOf(d.event) !== -1
+})
 
 class Graph {
   constructor() {
+    this.hoveredYear = null
     this.data = this.nestData()
     this.years = this.getYears()
+    this.flagTimeout = null
     this.initControls()
     this.initViz()
     window.onresize = this.initViz.bind(this)
+    this.waveFlag = this.waveFlag.bind(this)
   }
 
   nestData() {
@@ -30,6 +43,11 @@ class Graph {
         const minutes = parseInt(parseTime[0], 10)
         const seconds = parseFloat(parseTime[1])
         d.time = (minutes * 60) + seconds
+      }
+      if (d.event === "500m Men" || d.event === "500m Women") {
+        if (yearsWith2X500M.indexOf(d.year) !== -1) {
+          d.time /= 2
+        }
       }
       if (!dataByEvent[d.event]) {
         dataByEvent[d.event] = []
@@ -54,14 +72,16 @@ class Graph {
       .attr('value', d => d)
       .html(d => d)
     controls.on('change', (d, i, node) => {
-      this.drawEvent(node[0].selectedIndex)
+      const currentEventIdx = node[0].selectedIndex
+      this.currentEventData = this.data[Object.keys(this.data)[currentEventIdx]]
+      this.drawEvent()
     })
   }
 
   initViz() {
     select('.viz').selectAll("*").remove()
-    this.width = window.innerWidth
-    this.height = 330
+    this.width = window.innerWidth - vizPadding
+    this.height = 300
     this.xDomain = Object.keys(this.years)
     this.xRange = [margin.left, this.width - margin.right]
     this.xScale = scalePoint()
@@ -70,8 +90,12 @@ class Graph {
       .padding(this.width / 10)
     this.viz1 = this.drawSVG('viz-1')
     this.viz2 = this.drawSVG('viz-2')
-    this.drawEvent(0)
+    this.currentEventData = this.data[Object.keys(this.data)[0]]
+    this.drawEvent()
     this.drawAltitudes()
+    const g = this.viz2.append('g').classed('flag', true)
+      g.append('line')
+      g.append('path').classed('flying-flag', true)
   }
 
   drawSVG(className) {
@@ -83,9 +107,8 @@ class Graph {
     return viz
   }
 
-  drawEvent(eventIndex) {
-    const eventData = this.data[Object.keys(this.data)[eventIndex]]
-    const golds = eventData.filter(d => d.medal === 'GOLD')
+  drawEvent() {
+    const golds = this.currentEventData.filter(d => d.medal === 'GOLD')
     const scaleExtent = extent(golds, d => d.time)
     this.yScale = scaleLinear()
       .domain(scaleExtent)
@@ -146,9 +169,18 @@ class Graph {
       .call(bottomAxis)
 
     select('.viz').on('mousemove', () => {
-      const mouseX = event.clientX - (this.xScale.step() / 2)
-      const hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), mouseX)]
-      console.log(hoveredYear)
+      const mouseX = event.clientX - margin.left
+      if (mouseX > margin.left && mouseX < this.width) {
+        const hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), mouseX)]
+        if (!hoveredYear) {
+          this.hoveredYear = null
+        } else if (this.hoveredYear !== hoveredYear) {
+          this.hoveredYear = hoveredYear
+          this.selectYear()
+        }
+      } else {
+        this.hoveredYear = null
+      }
     })
 
   }
@@ -173,27 +205,83 @@ class Graph {
 
   generateMountain(d) {
     const scaleStep = this.stepScale(d.altitude)
-    const apexX = this.xScale(d.year)
-    const apexY = this.yScaleAltitudes(d.altitude)
+    const apex = this.getApex(d.year, d.altitude)
     const baseY = this.yScaleAltitudes(0)
-    return `M${apexX} ${apexY} L${apexX + scaleStep} ${baseY} L${apexX - scaleStep} ${baseY} Z`
+    return `M${apex.x} ${apex.y} L${apex.x + scaleStep} ${baseY} L${apex.x - scaleStep} ${baseY} Z`
   }
 
   generateSnow(d) {
     const snowSize = 0.4
     const snowWaviness = 8
     const scaleStep = this.stepScale(d.altitude)
-    const apexX = this.xScale(d.year)
-    const apexY = this.yScaleAltitudes(d.altitude)
+    const apex = this.getApex(d.year, d.altitude)
     const baseY = this.yScaleAltitudes(0)
-    const snowLineX0 = apexX + (scaleStep * snowSize)
-    const snowLineX1 = apexX - (scaleStep * snowSize)
+    const snowLineX0 = apex.x + (scaleStep * snowSize)
+    const snowLineX1 = apex.x - (scaleStep * snowSize)
     const snowLineY = (this.yScaleAltitudes(d.altitude * (1 - snowSize)))
-    const cpx0 = (snowLineX0 + apexX) / 2
-    const cpy0 = snowLineY - (snowLineY - apexY) / snowWaviness
-    const cpx1 = (snowLineX1 + apexX) / 2
-    const cpy1 = snowLineY + (snowLineY - apexY) / snowWaviness
-    return `M${apexX} ${apexY} L${snowLineX0} ${snowLineY} Q${cpx0} ${cpy0}, ${apexX} ${snowLineY} Q ${cpx1} ${cpy1}, ${snowLineX1} ${snowLineY} Z`
+    const cpx0 = (snowLineX0 + apex.x) / 2
+    const cpy0 = snowLineY - (snowLineY - apex.y) / snowWaviness
+    const cpx1 = (snowLineX1 + apex.x) / 2
+    const cpy1 = snowLineY + (snowLineY - apex.y) / snowWaviness
+    return `M${apex.x} ${apex.y} L${snowLineX0} ${snowLineY} Q${cpx0} ${cpy0}, ${apex.x} ${snowLineY} Q ${cpx1} ${cpy1}, ${snowLineX1} ${snowLineY} Z`
+  }
+
+  selectYear() {
+    clearTimeout(this.flagTimeout)
+    this.drawFlag()
+    this.highlightMedal()
+  }
+
+  highlightMedal() {
+    const medalDatum = this.currentEventData.find(d => {
+      return d.year == this.hoveredYear && d.medal === 'GOLD'
+    })
+    this.viz1.selectAll('circle')
+      .attr('r', d => d.year == this.hoveredYear ? radius + 2 : radius)
+      .style('fill', d => d.year == this.hoveredYear ? '#EEBF48' : '#F8F4E4')
+  }
+
+  drawFlag() {
+    const yearData = this.years[this.hoveredYear]
+    const apex = this.getApex(yearData.year, yearData.altitude)
+    const flagGroup = this.viz2.select('.flag')
+    flagGroup.attr('transform', `translate(${apex.x}, ${apex.y})`)
+    flagGroup.select('line')
+      .attr('x1', 0)
+      .attr('y1', 3)
+      .attr('x2', 0)
+      .attr('y2', 0)
+      .transition()
+      .attr('y2', -poleHeight - flagHeight)
+    flagGroup.select('.flying-flag').interrupt()
+      .attr('transform', `translate(0, 0)`)
+      .attr('d', `M0 ${-flagHeight} Q0 ${-flagHeight - flagWaviness}, 0 ${-flagHeight} Q0 ${-flagHeight + flagWaviness}, 0 ${-flagHeight} L0 0 Q0 0, 0 0 Q0 0, 0 0 Z`)
+      .transition()
+      .attr('transform', `translate(0, ${-poleHeight})`)
+      .on('end', () => {this.waveFlag(flagGroup)})
+  }
+
+  getApex(year, altitude) {
+    return {x: this.xScale(year), y: this.yScaleAltitudes(altitude)}
+  }
+
+  generateFlagPath(cp0, offset, cp1, invert) {
+    invert = invert ? -1 : 1
+    return `M0 ${-flagHeight} Q${flagWidth * cp0} ${-flagHeight - (invert * flagWaviness)}, ${flagWidth * offset} ${-flagHeight} Q${flagWidth * cp1} ${-flagHeight + (invert * flagWaviness)}, ${flagWidth} ${-flagHeight} L${flagWidth} 0 Q${flagWidth * cp1} ${(invert * flagWaviness)}, ${flagWidth * offset} 0 Q${flagWidth * cp0} ${-(invert * flagWaviness)}, 0 0 Z`
+  }
+
+  waveFlag(flagGroup) {
+    flagGroup.select('.flying-flag').transition().ease(easeSinIn)
+    .attr('d', this.generateFlagPath(0.25, 0.5, 0.75, false))
+    .transition().ease(easeLinear)
+    .attr('d', this.generateFlagPath(0.9, 0.95, 1, false))
+    .transition().ease(easeLinear)
+    .attr('d', this.generateFlagPath(0.9, 0.95, 1, true))
+    .transition().ease(easeSinOut)
+    .attr('d', this.generateFlagPath(0.25, 0.5, 0.75, true))
+    .on('end', () => {
+      this.flagTimeout = window.setTimeout(() => this.waveFlag(flagGroup), 700)
+    })
   }
 
 }
