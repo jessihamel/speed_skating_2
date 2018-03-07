@@ -6,9 +6,10 @@ import {extent, max, bisect} from 'd3-array'
 import {transition} from 'd3-transition'
 import {axisLeft, axisBottom} from 'd3-axis'
 import {easeLinear, easeSinIn, easeSinOut} from 'd3-ease'
-import skater from './speed_skater.svg';
+import skater from './speed_skater.svg'
+import yeti from './yeti.svg'
 
-const eventsToInclude = ["500m Men","1500m Men","5000m Men","10000m Men","500m Women","1000m Women","1500m Women","3000m Women","1000m Men","5000m Women"]
+const eventsToInclude = ['500m Men','1500m Men','5000m Men','10000m Men','500m Women','1000m Women','1500m Women','3000m Women','1000m Men','5000m Women']
 const yearsWith2X500M = [1998, 2002, 2006, 2010, 2014]
 const margin = {top: 35, bottom: 52, left: 80, right: 60}
 const radius = 9
@@ -20,20 +21,21 @@ const smallWidth = 600
 const filteredData = data.filter(d => {
   return +d.year >= 1964 && eventsToInclude.indexOf(d.event) !== -1
 })
-
-const skaterImg = document.getElementById('skater')
-skaterImg.src = skater
+const highestYear = 2002
 
 class Graph {
   constructor() {
     this.hoveredYear = null
     this.data = this.nestData()
     this.years = this.getYears()
+    this.highestYear = this.years[highestYear]
     this.flagTimeout = null
+    this.yetiTimeout = null
     this.initControls()
     this.initViz()
     window.onresize = this.initViz.bind(this)
     this.waveFlag = this.waveFlag.bind(this)
+    this.drawYeti = this.drawYeti.bind(this)
   }
 
   nestData() {
@@ -81,7 +83,7 @@ class Graph {
   }
 
   initViz() {
-    select('.viz').selectAll("*").remove()
+    select('.viz').selectAll('*').remove()
     this.width = select('.viz').node().getBoundingClientRect().width
     this.height = this.width < smallWidth ? 180 : 300
     this.xDomain = Object.keys(this.years)
@@ -98,7 +100,33 @@ class Graph {
     const g = this.viz2.append('g').classed('flag', true)
       g.append('line')
       g.append('path').classed('flying-flag', true)
-  }
+
+    const highestYearApex = this.getApex(this.highestYear.year, this.highestYear.altitude)
+    this.viz2
+      .append('clipPath').attr('id', 'yeti-clip')
+      .append('path')
+      .attr('d', `M${highestYearApex.x} ${highestYearApex.y} L${this.width - margin.right} ${highestYearApex.y} L${this.width - margin.right} ${this.height - margin.bottom} L${highestYearApex.x + this.xScale.step()} ${this.height - margin.bottom} Z`)
+    const yetiSize = this.getYetiSize()
+    this.yeti = this.viz2.append('g').classed('yeti', true)
+      .attr('clip-path', 'url(#yeti-clip)')
+      .append('g')
+      .attr('transform', `translate(${this.xScale('2002') - (yetiSize)}, ${this.height / 2})`)
+      .attr('opacity', 0)
+    this.yeti
+      .append('image')
+      .attr('y', -yetiSize)
+      .attr('transform', 'rotate(40)')
+      .attr('width', yetiSize)
+      .attr('height', yetiSize)
+      .attr('xlink:href', yeti)
+    if (this.width > smallWidth) {
+      this.yeti
+        .append('text')
+        .text('Abominable!')
+        .attr('transform', `translate(${yetiSize + 5}, ${-yetiSize / 2})`)
+        .style('letter-spacing', '0.2em')
+    }
+}
 
   drawSVG(className, yAxisLabel) {
     const viz = select('.viz').append('svg').classed(className, true)
@@ -151,6 +179,8 @@ class Graph {
     this.viz1.select('.xAxis')
       .attr('transform', `translate(0, ${this.height - margin.bottom})`)
       .call(bottomAxis)
+
+    this.updateStatLabels(true)
   }
 
   drawAltitudes() {
@@ -181,9 +211,11 @@ class Graph {
       .call(bottomAxis)
 
     select('.viz').on('mousemove', () => {
-      const mouseX = event.clientX - margin.left
-      if (mouseX > margin.left && mouseX < this.width) {
-        const hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), mouseX)]
+      const vizOffset = select('.viz').node().getBoundingClientRect().left
+      const graphX = event.clientX - vizOffset
+      if (graphX > margin.left && graphX < (this.width - margin.right)) {
+        const scaledX = graphX - (this.xScale.step() / 2)
+        const hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), scaledX)]
         if (!hoveredYear) {
           this.hoveredYear = null
         } else if (this.hoveredYear !== hoveredYear) {
@@ -238,10 +270,14 @@ class Graph {
 
   selectYear() {
     clearTimeout(this.flagTimeout)
+    clearTimeout(this.yetiTimeout)
     this.drawFlag()
     this.highlightMedal()
     this.highlightMountain()
-    this.showStatLabels()
+    this.updateStatLabels()
+    if (this.hoveredYear === '2002') {
+      this.yetiTimeout = window.setTimeout(this.drawYeti, 7000)
+    }
   }
 
   highlightMedal() {
@@ -258,8 +294,8 @@ class Graph {
       .classed('selected', d => d.year == this.hoveredYear ? true : false)
   }
 
-  showStatLabels() {
-    if (this.width < 450) {
+  updateStatLabels(reset = false) {
+    if (reset || this.width < 450) {
       this.viz1.select('.stat-label text').text('')
       this.viz2.select('.stat-label text').text('')
       return
@@ -314,19 +350,36 @@ class Graph {
     .transition().ease(easeSinOut)
     .attr('d', this.generateFlagPath(0.25, 0.5, 0.75, true))
     .on('end', () => {
-      this.flagTimeout = window.setTimeout(() => this.waveFlag(flagGroup), 700)
+      this.flagTimeout = window.setTimeout(() => this.waveFlag(flagGroup), 1500)
     })
   }
 
+  getYetiSize() {
+    return Math.floor(this.xScale.step() * 2)
+  }
+
+  drawYeti() {
+    this.yeti.transition()
+      .duration(1500)
+      .attr('transform', `translate(${this.xScale('2002') - (this.getYetiSize() / 5)}, ${this.height * 0.5})`)
+      .attr('opacity', 1)
+      .transition()
+      .delay(1500)
+      .attr('transform', `translate(${this.xScale('2002') - (this.getYetiSize())}, ${this.height * 0.5})`)
+      .attr('opacity', 0)
+  }
+
   isDoubleYear(d) {
-    if (d.event === "500m Men" || d.event === "500m Women") {
+    if (d.event === '500m Men' || d.event === '500m Women') {
       if (yearsWith2X500M.indexOf(d.year) !== -1) {
         return true
       }
     }
     return false
   }
-
 }
+
+const skaterImg = document.getElementById('skater')
+skaterImg.src = skater
 
 new Graph()

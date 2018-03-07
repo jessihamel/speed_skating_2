@@ -6,6 +6,7 @@
   "dependencies": {
     "csv-loader": "^2.1.1",
     "d3": "^4.13.0",
+    "file-loader": "^1.1.11",
     "url-loader": "^0.6.2"
   },
   "scripts": {
