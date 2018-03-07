@@ -4484,11 +4484,15 @@ var _speed_skater = __webpack_require__(237);
 
 var _speed_skater2 = _interopRequireDefault(_speed_skater);
 
+var _yeti = __webpack_require__(238);
+
+var _yeti2 = _interopRequireDefault(_yeti);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var eventsToInclude = ["500m Men", "1500m Men", "5000m Men", "10000m Men", "500m Women", "1000m Women", "1500m Women", "3000m Women", "1000m Men", "5000m Women"];
+var eventsToInclude = ['500m Men', '1500m Men', '5000m Men', '10000m Men', '500m Women', '1000m Women', '1500m Women', '3000m Women', '1000m Men', '5000m Women'];
 var yearsWith2X500M = [1998, 2002, 2006, 2010, 2014];
 var margin = { top: 35, bottom: 52, left: 80, right: 60 };
 var radius = 9;
@@ -4500,9 +4504,7 @@ var smallWidth = 600;
 var filteredData = _speed_skating_results2.default.filter(function (d) {
   return +d.year >= 1964 && eventsToInclude.indexOf(d.event) !== -1;
 });
-
-var skaterImg = document.getElementById('skater');
-skaterImg.src = _speed_skater2.default;
+var highestYear = 2002;
 
 var Graph = function () {
   function Graph() {
@@ -4511,11 +4513,14 @@ var Graph = function () {
     this.hoveredYear = null;
     this.data = this.nestData();
     this.years = this.getYears();
+    this.highestYear = this.years[highestYear];
     this.flagTimeout = null;
+    this.yetiTimeout = null;
     this.initControls();
     this.initViz();
     window.onresize = this.initViz.bind(this);
     this.waveFlag = this.waveFlag.bind(this);
+    this.drawYeti = this.drawYeti.bind(this);
   }
 
   _createClass(Graph, [{
@@ -4572,7 +4577,7 @@ var Graph = function () {
   }, {
     key: 'initViz',
     value: function initViz() {
-      (0, _d3Selection.select)('.viz').selectAll("*").remove();
+      (0, _d3Selection.select)('.viz').selectAll('*').remove();
       this.width = (0, _d3Selection.select)('.viz').node().getBoundingClientRect().width;
       this.height = this.width < smallWidth ? 180 : 300;
       this.xDomain = Object.keys(this.years);
@@ -4586,6 +4591,15 @@ var Graph = function () {
       var g = this.viz2.append('g').classed('flag', true);
       g.append('line');
       g.append('path').classed('flying-flag', true);
+
+      var highestYearApex = this.getApex(this.highestYear.year, this.highestYear.altitude);
+      this.viz2.append('clipPath').attr('id', 'yeti-clip').append('path').attr('d', 'M' + highestYearApex.x + ' ' + highestYearApex.y + ' L' + (this.width - margin.right) + ' ' + highestYearApex.y + ' L' + (this.width - margin.right) + ' ' + (this.height - margin.bottom) + ' L' + (highestYearApex.x + this.xScale.step()) + ' ' + (this.height - margin.bottom) + ' Z');
+      var yetiSize = this.getYetiSize();
+      this.yeti = this.viz2.append('g').classed('yeti', true).attr('clip-path', 'url(#yeti-clip)').append('g').attr('transform', 'translate(' + (this.xScale('2002') - yetiSize) + ', ' + this.height / 2 + ')').attr('opacity', 0);
+      this.yeti.append('image').attr('y', -yetiSize).attr('transform', 'rotate(40)').attr('width', yetiSize).attr('height', yetiSize).attr('xlink:href', _yeti2.default);
+      if (this.width > smallWidth) {
+        this.yeti.append('text').text('Abominable!').attr('transform', 'translate(' + (yetiSize + 5) + ', ' + -yetiSize / 2 + ')').style('letter-spacing', '0.2em');
+      }
     }
   }, {
     key: 'drawSVG',
@@ -4628,6 +4642,8 @@ var Graph = function () {
         return d;
       }).tickSizeOuter(0).tickSizeInner(12);
       this.viz1.select('.xAxis').attr('transform', 'translate(0, ' + (this.height - margin.bottom) + ')').call(bottomAxis);
+
+      this.updateStatLabels(true);
     }
   }, {
     key: 'drawAltitudes',
@@ -4656,11 +4672,13 @@ var Graph = function () {
       this.viz2.select('.xAxis').attr('transform', 'translate(0, ' + (this.height - margin.bottom) + ')').call(bottomAxis);
 
       (0, _d3Selection.select)('.viz').on('mousemove', function () {
-        var mouseX = _d3Selection.event.clientX - margin.left;
-        if (mouseX > margin.left && mouseX < _this4.width) {
+        var vizOffset = (0, _d3Selection.select)('.viz').node().getBoundingClientRect().left;
+        var graphX = _d3Selection.event.clientX - vizOffset;
+        if (graphX > margin.left && graphX < _this4.width - margin.right) {
+          var scaledX = graphX - _this4.xScale.step() / 2;
           var hoveredYear = _this4.xDomain[(0, _d3Array.bisect)(_this4.xDomain.map(function (d) {
             return _this4.xScale(d);
-          }), mouseX)];
+          }), scaledX)];
           if (!hoveredYear) {
             _this4.hoveredYear = null;
           } else if (_this4.hoveredYear !== hoveredYear) {
@@ -4716,10 +4734,14 @@ var Graph = function () {
     key: 'selectYear',
     value: function selectYear() {
       clearTimeout(this.flagTimeout);
+      clearTimeout(this.yetiTimeout);
       this.drawFlag();
       this.highlightMedal();
       this.highlightMountain();
-      this.showStatLabels();
+      this.updateStatLabels();
+      if (this.hoveredYear === '2002') {
+        this.yetiTimeout = window.setTimeout(this.drawYeti, 7000);
+      }
     }
   }, {
     key: 'highlightMedal',
@@ -4745,11 +4767,13 @@ var Graph = function () {
       });
     }
   }, {
-    key: 'showStatLabels',
-    value: function showStatLabels() {
+    key: 'updateStatLabels',
+    value: function updateStatLabels() {
       var _this8 = this;
 
-      if (this.width < 450) {
+      var reset = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+
+      if (reset || this.width < 450) {
         this.viz1.select('.stat-label text').text('');
         this.viz2.select('.stat-label text').text('');
         return;
@@ -4797,13 +4821,23 @@ var Graph = function () {
       flagGroup.select('.flying-flag').transition().ease(_d3Ease.easeSinIn).attr('d', this.generateFlagPath(0.25, 0.5, 0.75, false)).transition().ease(_d3Ease.easeLinear).attr('d', this.generateFlagPath(0.9, 0.95, 1, false)).transition().ease(_d3Ease.easeLinear).attr('d', this.generateFlagPath(0.9, 0.95, 1, true)).transition().ease(_d3Ease.easeSinOut).attr('d', this.generateFlagPath(0.25, 0.5, 0.75, true)).on('end', function () {
         _this10.flagTimeout = window.setTimeout(function () {
           return _this10.waveFlag(flagGroup);
-        }, 700);
+        }, 1500);
       });
+    }
+  }, {
+    key: 'getYetiSize',
+    value: function getYetiSize() {
+      return Math.floor(this.xScale.step() * 2);
+    }
+  }, {
+    key: 'drawYeti',
+    value: function drawYeti() {
+      this.yeti.transition().duration(1500).attr('transform', 'translate(' + (this.xScale('2002') - this.getYetiSize() / 5) + ', ' + this.height * 0.5 + ')').attr('opacity', 1).transition().delay(1500).attr('transform', 'translate(' + (this.xScale('2002') - this.getYetiSize()) + ', ' + this.height * 0.5 + ')').attr('opacity', 0);
     }
   }, {
     key: 'isDoubleYear',
     value: function isDoubleYear(d) {
-      if (d.event === "500m Men" || d.event === "500m Women") {
+      if (d.event === '500m Men' || d.event === '500m Women') {
         if (yearsWith2X500M.indexOf(d.year) !== -1) {
           return true;
         }
@@ -4814,6 +4848,9 @@ var Graph = function () {
 
   return Graph;
 }();
+
+var skaterImg = document.getElementById('skater');
+skaterImg.src = _speed_skater2.default;
 
 new Graph();
 
@@ -10240,6 +10277,12 @@ var slice = Array.prototype.slice;
 /***/ (function(module, exports) {
 
 module.exports = "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAxNi4wLjAsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+DQo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4Ig0KCSB3aWR0aD0iNjRweCIgaGVpZ2h0PSI2NHB4IiB2aWV3Qm94PSIwIDAgNjQgNjQiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDY0IDY0IiB4bWw6c3BhY2U9InByZXNlcnZlIj4NCjxwYXRoIGZpbGw9IiMxZjE5MTMiIGQ9Ik00NC4xNiwyNC41NzZjMC0yLjc1MiwyLjI0LTQuOTkyLDQuOTkyLTQuOTkyczQuOTkyLDIuMjQsNC45OTIsNC45OTJzLTIuMjQsNC45OTItNC45OTIsNC45OTINCglTNDQuMTYsMjcuMzI4LDQ0LjE2LDI0LjU3NnogTTI5LjMxMiw1Ny41MzZ2LTEuMzQ1SDE3LjZ2MS4zNDVIMjkuMzEyeiBNMzYuNDgsMjcuMzI4YzAuOTU5LDAuOTYsMi41NiwwLjk2LDMuNTIsMHMwLjk2LTIuNTYsMC0zLjUyDQoJTDIzLjQyNCw3LjE2OGMtMC45Ni0wLjk2LTIuNTYtMC45Ni0zLjUyLDBzLTAuOTYsMi41NiwwLDMuNTJMMzYuNDgsMjcuMzI4eiBNNTAuMzY4LDQwLjE5MWgxMS4xMzZjMS40MDgsMCwyLjQ5Ni0xLjE1MSwyLjQ5Ni0yLjQ5Ng0KCWMwLTEuMzQ0LTEuMTUyLTIuNDk1LTIuNDk2LTIuNDk1SDUxLjM5M2wtMi40MzMtMi40MzNoLTcuMTA0bDYuNzg1LDYuNzIxQzQ5LjA4OCwzOS45MzYsNDkuNjY0LDQwLjE5MSw1MC4zNjgsNDAuMTkxeiBNMjguOCwzOS4xMDQNCglsLTcuMjk2LDEyLjYwOGMtMC43MDQsMS4yMTYtMC4yNTYsMi43NTIsMC44OTYsMy40NTZjMS4yMTYsMC43MDQsMi43NTIsMC4yNTYsMy40NTYtMC44OTZsOC4yNTUtMTQuMzM2DQoJYzAuNTc2LTEuMDIzLDAuMzg1LTIuMzA0LTAuNDQ3LTMuMDcybC05LjYtOS42NjNjLTAuOTYtMC45Ni0yLjU2LTAuOTYtMy41Miwwcy0wLjk2LDIuNTYsMCwzLjUyTDI4LjgsMzkuMTA0eiBNNS44MjQsNDkuNjY0DQoJbDEuMTUyLTAuNjQxTDEuMTUyLDM4LjkxMkwwLDM5LjU1Mkw1LjgyNCw0OS42NjR6IE02Ljk3Niw0MC4wNjRjLTEuNDA4LDAtMi40OTYsMS4xNTEtMi40OTYsMi40OTZjMCwxLjQwNywxLjE1MiwyLjQ5NiwyLjQ5NiwyLjQ5Ng0KCWgxNS4yMzJjMS40MDgsMCwyLjQ5Ni0xLjE1MiwyLjQ5Ni0yLjQ5NnYtNS42MzNsLTQuOTkyLTQuOTkydjguMTI4bDAsMCIvPg0KPC9zdmc+DQo="
+
+/***/ }),
+/* 238 */
+/***/ (function(module, exports, __webpack_require__) {
+
+module.exports = __webpack_require__.p + "images/src/yeti.svg";
 
 /***/ })
 /******/ ]);
