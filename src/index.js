@@ -5,19 +5,24 @@ import {scaleLinear, scalePoint} from 'd3-scale'
 import {extent, max, bisect} from 'd3-array'
 import {transition} from 'd3-transition'
 import {axisLeft, axisBottom} from 'd3-axis'
-import {easeLinear, easeSinIn, easeSinOut} from 'd3-ease'
+import {easeLinear, easeSinIn, easeSinOut, easeSinInOut} from 'd3-ease'
 import skater from './speed_skater.svg'
 import yeti from './yeti.svg'
 
-const eventsToInclude = ['500m Men','1500m Men','5000m Men','10000m Men','500m Women','1000m Women','1500m Women','3000m Women','1000m Men','5000m Women']
+const eventsToInclude = ['500m Men','1000m Men','1500m Men','5000m Men','10000m Men','500m Women','1000m Women','1500m Women','3000m Women','5000m Women']
 const yearsWith2X500M = [1998, 2002, 2006, 2010, 2014]
-const margin = {top: 35, bottom: 52, left: 80, right: 60}
+const margin = {top: 40, bottom: 52, left: 80, right: 40}
 const radius = 9
+const largeRadius = 12
 const flagHeight = 15
 const poleHeight = 12
 const flagWidth = 22
 const flagWaviness = 3
 const smallWidth = 600
+const ribbonHeight = 30
+const medalWidth = 20
+const ribbonWidth = 10
+const ribbonRoot = ribbonWidth / Math.sqrt(2)
 const filteredData = data.filter(d => {
   return +d.year >= 1964 && eventsToInclude.indexOf(d.event) !== -1
 })
@@ -70,15 +75,18 @@ class Graph {
 
   initControls() {
     const controls = select('.controls').append('select')
-    controls.selectAll('option').data(Object.keys(this.data))
+    controls.selectAll('option').data(eventsToInclude)
       .enter()
       .append('option')
       .attr('value', d => d)
       .html(d => (d === '500m Men' || d === '500m Women') ? `${d}*` : d)
     controls.on('change', (d, i, node) => {
+      this.hoveredYear = null
       const currentEventIdx = node[0].selectedIndex
       this.currentEventData = this.data[Object.keys(this.data)[currentEventIdx]]
+      this.cancelAnimations()
       this.drawEvent()
+      this.selectYear()
     })
   }
 
@@ -93,6 +101,8 @@ class Graph {
       .range(this.xRange)
       .padding(this.width / 10)
     this.viz1 = this.drawSVG('viz-1', 'Time (seconds)')
+    this.circleGroup = this.viz1.append('g').classed('circle-g', true)
+    this.drawGoldMedal()
     this.viz2 = this.drawSVG('viz-2', this.width < smallWidth ? 'Venue Altitude (m)' : 'Olypmic Venue Altitude (meters)')
     this.currentEventData = this.data[Object.keys(this.data)[0]]
     this.drawEvent()
@@ -153,14 +163,14 @@ class Graph {
     this.yScale = scaleLinear()
       .domain(scaleExtent)
       .range([margin.top, this.height - margin.bottom])
-    const circles = this.viz1.selectAll('circle').data(golds, d => d.year)
+    const circles = this.circleGroup.selectAll('circle').data(golds, d => d.year)
     const circlesEnter = circles.enter()
       .append('circle')
       .attr('cx', d => this.xScale(d.year))
       .attr('cy', this.height)
       .attr('opacity', 0)
     circles.exit().remove()
-    this.viz1.selectAll('circle')
+    this.circleGroup.selectAll('circle')
       .transition()
       .attr('cy', this.height)
       .attr('opacity', 0)
@@ -179,8 +189,6 @@ class Graph {
     this.viz1.select('.xAxis')
       .attr('transform', `translate(0, ${this.height - margin.bottom})`)
       .call(bottomAxis)
-
-    this.updateStatLabels(true)
   }
 
   drawAltitudes() {
@@ -213,17 +221,16 @@ class Graph {
     select('.viz').on('mousemove', () => {
       const vizOffset = select('.viz').node().getBoundingClientRect().left
       const graphX = event.clientX - vizOffset
+      let hoveredYear = null
       if (graphX > margin.left && graphX < (this.width - margin.right)) {
         const scaledX = graphX - (this.xScale.step() / 2)
-        const hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), scaledX)]
-        if (!hoveredYear) {
-          this.hoveredYear = null
-        } else if (this.hoveredYear !== hoveredYear) {
-          this.hoveredYear = hoveredYear
-          this.selectYear()
-        }
+        hoveredYear = this.xDomain[bisect(this.xDomain.map(d => this.xScale(d)), scaledX)]
       } else {
-        this.hoveredYear = null
+        hoveredYear = null
+      }
+      if (this.hoveredYear !== hoveredYear) {
+        this.hoveredYear = hoveredYear
+        this.selectYear()
       }
     })
   }
@@ -272,7 +279,7 @@ class Graph {
     clearTimeout(this.flagTimeout)
     clearTimeout(this.yetiTimeout)
     this.drawFlag()
-    this.highlightMedal()
+    this.updateGoldMedal()
     this.highlightMountain()
     this.updateStatLabels()
     if (this.hoveredYear === '2002') {
@@ -280,13 +287,58 @@ class Graph {
     }
   }
 
-  highlightMedal() {
+  drawGoldMedal(d) {
+    this.medalGroup = this.viz1.append('g').classed('medal', true)
+    this.hide(this.medalGroup)
+    this.medalGroup.append('path').classed('path-1', true)
+    this.medalGroup.append('path').classed('path-2', true)
+    this.medalGroup.append('path').classed('path-3', true)
+    this.goldGroup = this.medalGroup.append('g')
+    this.goldGroup.append('circle').classed('medal-circle', true)
+    this.goldGroup.append('polygon').classed('star', true)
+      .attr('points', this.calculateStarPoints(0, 0, 5, radius, 4))
+    this.goldGroup.attr('transform', `translate(0, ${ribbonHeight + radius})`)
+    this.medalGroup.select('.medal-circle').attr('r', largeRadius)
+  }
+
+  updateGoldMedal() {
+    if (!this.hoveredYear) {
+      this.hide(this.medalGroup)
+      return
+    }
+    this.show(this.medalGroup)
     const medalDatum = this.currentEventData.find(d => {
       return d.year == this.hoveredYear && d.medal === 'GOLD'
     })
-    this.viz1.selectAll('circle')
-      .attr('r', d => d.year == this.hoveredYear ? radius + 2 : radius)
-      .classed('selected', d => d.year == this.hoveredYear ? true : false)
+    if (!medalDatum) {
+      this.hide(this.medalGroup)
+      return
+    }
+    const medalGroupTranslate = `translate(${this.xScale(medalDatum.year)}, ${this.yScale(medalDatum.time) - ribbonHeight - radius})`
+    const medalAnimationTime = 600
+    this.medalGroup.interrupt()
+    this.medalGroup.attr('transform', medalGroupTranslate)
+    this.medalGroup.select('.path-1')
+      .attr('d', `M0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} Z`)
+      .transition().duration(medalAnimationTime)
+      .attr('d', this.calculateRibbon(1))
+    this.medalGroup.select('.path-2')
+      .attr('d', `M0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} Z`)
+      .transition().duration(medalAnimationTime)
+      .attr('d', this.calculateRibbon(2))
+    this.medalGroup.select('.path-3')
+      .attr('d', `M0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} L0 ${ribbonHeight} Z`)
+      .transition().duration(medalAnimationTime)
+      .attr('d', this.calculateRibbon(3))
+    this.medalGroup
+      .transition().duration(medalAnimationTime).ease(easeSinInOut)
+      .attr('transform', `${medalGroupTranslate} rotate(3)`)
+      .transition().duration(medalAnimationTime).ease(easeSinInOut)
+      .attr('transform', `${medalGroupTranslate} rotate(-2)`)
+      .transition().duration(medalAnimationTime).ease(easeSinInOut)
+      .attr('transform', `${medalGroupTranslate} rotate(1)`)
+      .transition().duration(medalAnimationTime).ease(easeSinInOut)
+      .attr('transform', `${medalGroupTranslate}`)
   }
 
   highlightMountain() {
@@ -294,8 +346,8 @@ class Graph {
       .classed('selected', d => d.year == this.hoveredYear ? true : false)
   }
 
-  updateStatLabels(reset = false) {
-    if (reset || this.width < 450) {
+  updateStatLabels() {
+    if (this.width < 450 || !this.hoveredYear) {
       this.viz1.select('.stat-label text').text('')
       this.viz2.select('.stat-label text').text('')
       return
@@ -303,18 +355,28 @@ class Graph {
     const medalDatum = this.currentEventData.find(d => {
       return d.year == this.hoveredYear && d.medal === 'GOLD'
     })
+    if (!medalDatum) {
+      this.viz1.select('.stat-label text').text('')
+      this.viz2.select('.stat-label text').text('')
+      return
+    }
     const asterix = this.isDoubleYear(medalDatum) ? '*' : ''
     const yearDatum = this.years[this.hoveredYear]
-    const text0 = `Time: ${medalDatum.timeFormat}${asterix} | Althlete: ${medalDatum.athlete}`
-    const text1 = `${yearDatum.location} | Altitude: ${yearDatum.altitude}m`
+    const text0 = `${medalDatum.timeFormat}${asterix} | ${medalDatum.athlete}`
+    const text1 = `${yearDatum.location} | ${yearDatum.altitude}m`
     this.viz1.select('.stat-label text').text(text0)
     this.viz2.select('.stat-label text').text(text1)
   }
 
   drawFlag() {
+    const flagGroup = this.viz2.select('.flag')
+    if (!this.hoveredYear) {
+      this.hide(flagGroup)
+      return
+    }
+    this.show(flagGroup)
     const yearData = this.years[this.hoveredYear]
     const apex = this.getApex(yearData.year, yearData.altitude)
-    const flagGroup = this.viz2.select('.flag')
     flagGroup.attr('transform', `translate(${apex.x}, ${apex.y})`)
     flagGroup.select('line')
       .attr('x1', 0)
@@ -359,12 +421,10 @@ class Graph {
   }
 
   drawYeti() {
-    this.yeti.transition()
-      .duration(1500)
+    this.yeti.transition().duration(1500)
       .attr('transform', `translate(${this.xScale('2002') - (this.getYetiSize() / 5)}, ${this.height * 0.5})`)
       .attr('opacity', 1)
-      .transition()
-      .delay(1500)
+      .transition().delay(1500)
       .attr('transform', `translate(${this.xScale('2002') - (this.getYetiSize())}, ${this.height * 0.5})`)
       .attr('opacity', 0)
   }
@@ -376,6 +436,47 @@ class Graph {
       }
     }
     return false
+  }
+
+  calculateRibbon(pathIdx) {
+    const ratio = medalWidth / ribbonHeight
+    if (pathIdx === 1) {
+      return `M${ribbonRoot} ${ribbonHeight} L${-medalWidth + ribbonRoot} 0 L${-medalWidth} ${ribbonRoot} L0 ${ribbonHeight + ribbonRoot} Z`
+    } else if (pathIdx === 2) {
+      return `M${-ribbonRoot} ${ribbonHeight} L${medalWidth - ribbonRoot} 0 L${medalWidth} ${ribbonRoot} L0 ${ribbonHeight + ribbonRoot} Z`
+    } else if (pathIdx === 3) {
+      return `M0 0 L${-medalWidth + ribbonRoot} 0 L${-medalWidth + ribbonRoot + (ribbonWidth * ratio)} ${ribbonWidth} L${medalWidth - (ribbonWidth * ratio) - ribbonRoot} ${ribbonWidth} L${medalWidth - ribbonRoot} 0 Z`
+    }
+  }
+
+  calculateStarPoints(centerX, centerY, arms, outerRadius, innerRadius) {
+    // https://dillieodigital.wordpress.com/2013/01/16/quick-tip-how-to-draw-a-star-with-svg-and-javascript/
+    let results = ''
+    const angle = Math.PI / arms;
+    for (let i = 0; i < 2 * arms; i++) {
+       const r = (i & 1) == 0 ? outerRadius : innerRadius
+       const currX = centerX + Math.cos(i * angle) * r
+       const currY = centerY + Math.sin(i * angle) * r
+       if (i == 0) {
+          results = currX + "," + currY
+       } else {
+          results += ", " + currX + "," + currY
+       }
+    }
+    return results
+  }
+
+  hide(el) {
+    el.style('visibility', 'hidden')
+  }
+
+  show(el) {
+    el.style('visibility', 'visible')
+  }
+
+  cancelAnimations() {
+    this.viz2.select('.flag').select('.flying-flag').interrupt()
+    this.medalGroup.interrupt()
   }
 }
 
