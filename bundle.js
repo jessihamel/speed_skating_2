@@ -4492,15 +4492,20 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var eventsToInclude = ['500m Men', '1500m Men', '5000m Men', '10000m Men', '500m Women', '1000m Women', '1500m Women', '3000m Women', '1000m Men', '5000m Women'];
+var eventsToInclude = ['500m Men', '1000m Men', '1500m Men', '5000m Men', '10000m Men', '500m Women', '1000m Women', '1500m Women', '3000m Women', '5000m Women'];
 var yearsWith2X500M = [1998, 2002, 2006, 2010, 2014];
-var margin = { top: 35, bottom: 52, left: 80, right: 60 };
+var margin = { top: 40, bottom: 52, left: 80, right: 40 };
 var radius = 9;
+var largeRadius = 12;
 var flagHeight = 15;
 var poleHeight = 12;
 var flagWidth = 22;
 var flagWaviness = 3;
 var smallWidth = 600;
+var ribbonHeight = 30;
+var medalWidth = 20;
+var ribbonWidth = 10;
+var ribbonRoot = ribbonWidth / Math.sqrt(2);
 var filteredData = _speed_skating_results2.default.filter(function (d) {
   return +d.year >= 1964 && eventsToInclude.indexOf(d.event) !== -1;
 });
@@ -4563,15 +4568,18 @@ var Graph = function () {
       var _this2 = this;
 
       var controls = (0, _d3Selection.select)('.controls').append('select');
-      controls.selectAll('option').data(Object.keys(this.data)).enter().append('option').attr('value', function (d) {
+      controls.selectAll('option').data(eventsToInclude).enter().append('option').attr('value', function (d) {
         return d;
       }).html(function (d) {
         return d === '500m Men' || d === '500m Women' ? d + '*' : d;
       });
       controls.on('change', function (d, i, node) {
+        _this2.hoveredYear = null;
         var currentEventIdx = node[0].selectedIndex;
         _this2.currentEventData = _this2.data[Object.keys(_this2.data)[currentEventIdx]];
+        _this2.cancelAnimations();
         _this2.drawEvent();
+        _this2.selectYear();
       });
     }
   }, {
@@ -4584,6 +4592,8 @@ var Graph = function () {
       this.xRange = [margin.left, this.width - margin.right];
       this.xScale = (0, _d3Scale.scalePoint)().domain(this.xDomain).range(this.xRange).padding(this.width / 10);
       this.viz1 = this.drawSVG('viz-1', 'Time (seconds)');
+      this.circleGroup = this.viz1.append('g').classed('circle-g', true);
+      this.drawGoldMedal();
       this.viz2 = this.drawSVG('viz-2', this.width < smallWidth ? 'Venue Altitude (m)' : 'Olypmic Venue Altitude (meters)');
       this.currentEventData = this.data[Object.keys(this.data)[0]];
       this.drawEvent();
@@ -4623,14 +4633,14 @@ var Graph = function () {
         return d.time;
       });
       this.yScale = (0, _d3Scale.scaleLinear)().domain(scaleExtent).range([margin.top, this.height - margin.bottom]);
-      var circles = this.viz1.selectAll('circle').data(golds, function (d) {
+      var circles = this.circleGroup.selectAll('circle').data(golds, function (d) {
         return d.year;
       });
       var circlesEnter = circles.enter().append('circle').attr('cx', function (d) {
         return _this3.xScale(d.year);
       }).attr('cy', this.height).attr('opacity', 0);
       circles.exit().remove();
-      this.viz1.selectAll('circle').transition().attr('cy', this.height).attr('opacity', 0).transition().attr('cx', function (d) {
+      this.circleGroup.selectAll('circle').transition().attr('cy', this.height).attr('opacity', 0).transition().attr('cx', function (d) {
         return _this3.xScale(d.year);
       }).attr('cy', function (d) {
         return _this3.yScale(d.time);
@@ -4642,8 +4652,6 @@ var Graph = function () {
         return d;
       }).tickSizeOuter(0).tickSizeInner(12);
       this.viz1.select('.xAxis').attr('transform', 'translate(0, ' + (this.height - margin.bottom) + ')').call(bottomAxis);
-
-      this.updateStatLabels(true);
     }
   }, {
     key: 'drawAltitudes',
@@ -4674,19 +4682,18 @@ var Graph = function () {
       (0, _d3Selection.select)('.viz').on('mousemove', function () {
         var vizOffset = (0, _d3Selection.select)('.viz').node().getBoundingClientRect().left;
         var graphX = _d3Selection.event.clientX - vizOffset;
+        var hoveredYear = null;
         if (graphX > margin.left && graphX < _this4.width - margin.right) {
           var scaledX = graphX - _this4.xScale.step() / 2;
-          var hoveredYear = _this4.xDomain[(0, _d3Array.bisect)(_this4.xDomain.map(function (d) {
+          hoveredYear = _this4.xDomain[(0, _d3Array.bisect)(_this4.xDomain.map(function (d) {
             return _this4.xScale(d);
           }), scaledX)];
-          if (!hoveredYear) {
-            _this4.hoveredYear = null;
-          } else if (_this4.hoveredYear !== hoveredYear) {
-            _this4.hoveredYear = hoveredYear;
-            _this4.selectYear();
-          }
         } else {
-          _this4.hoveredYear = null;
+          hoveredYear = null;
+        }
+        if (_this4.hoveredYear !== hoveredYear) {
+          _this4.hoveredYear = hoveredYear;
+          _this4.selectYear();
         }
       });
     }
@@ -4736,7 +4743,7 @@ var Graph = function () {
       clearTimeout(this.flagTimeout);
       clearTimeout(this.yetiTimeout);
       this.drawFlag();
-      this.highlightMedal();
+      this.updateGoldMedal();
       this.highlightMountain();
       this.updateStatLabels();
       if (this.hoveredYear === '2002') {
@@ -4744,18 +4751,44 @@ var Graph = function () {
       }
     }
   }, {
-    key: 'highlightMedal',
-    value: function highlightMedal() {
+    key: 'drawGoldMedal',
+    value: function drawGoldMedal(d) {
+      this.medalGroup = this.viz1.append('g').classed('medal', true);
+      this.hide(this.medalGroup);
+      this.medalGroup.append('path').classed('path-1', true);
+      this.medalGroup.append('path').classed('path-2', true);
+      this.medalGroup.append('path').classed('path-3', true);
+      this.goldGroup = this.medalGroup.append('g');
+      this.goldGroup.append('circle').classed('medal-circle', true);
+      this.goldGroup.append('polygon').classed('star', true).attr('points', this.calculateStarPoints(0, 0, 5, radius, 4));
+      this.goldGroup.attr('transform', 'translate(0, ' + (ribbonHeight + radius) + ')');
+      this.medalGroup.select('.medal-circle').attr('r', largeRadius);
+    }
+  }, {
+    key: 'updateGoldMedal',
+    value: function updateGoldMedal() {
       var _this6 = this;
 
+      if (!this.hoveredYear) {
+        this.hide(this.medalGroup);
+        return;
+      }
+      this.show(this.medalGroup);
       var medalDatum = this.currentEventData.find(function (d) {
         return d.year == _this6.hoveredYear && d.medal === 'GOLD';
       });
-      this.viz1.selectAll('circle').attr('r', function (d) {
-        return d.year == _this6.hoveredYear ? radius + 2 : radius;
-      }).classed('selected', function (d) {
-        return d.year == _this6.hoveredYear ? true : false;
-      });
+      if (!medalDatum) {
+        this.hide(this.medalGroup);
+        return;
+      }
+      var medalGroupTranslate = 'translate(' + this.xScale(medalDatum.year) + ', ' + (this.yScale(medalDatum.time) - ribbonHeight - radius) + ')';
+      var medalAnimationTime = 600;
+      this.medalGroup.interrupt();
+      this.medalGroup.attr('transform', medalGroupTranslate);
+      this.medalGroup.select('.path-1').attr('d', 'M0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' Z').transition().duration(medalAnimationTime).attr('d', this.calculateRibbon(1));
+      this.medalGroup.select('.path-2').attr('d', 'M0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' Z').transition().duration(medalAnimationTime).attr('d', this.calculateRibbon(2));
+      this.medalGroup.select('.path-3').attr('d', 'M0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' L0 ' + ribbonHeight + ' Z').transition().duration(medalAnimationTime).attr('d', this.calculateRibbon(3));
+      this.medalGroup.transition().duration(medalAnimationTime).ease(_d3Ease.easeSinInOut).attr('transform', medalGroupTranslate + ' rotate(3)').transition().duration(medalAnimationTime).ease(_d3Ease.easeSinInOut).attr('transform', medalGroupTranslate + ' rotate(-2)').transition().duration(medalAnimationTime).ease(_d3Ease.easeSinInOut).attr('transform', medalGroupTranslate + ' rotate(1)').transition().duration(medalAnimationTime).ease(_d3Ease.easeSinInOut).attr('transform', '' + medalGroupTranslate);
     }
   }, {
     key: 'highlightMountain',
@@ -4771,9 +4804,7 @@ var Graph = function () {
     value: function updateStatLabels() {
       var _this8 = this;
 
-      var reset = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
-
-      if (reset || this.width < 450) {
+      if (this.width < 450 || !this.hoveredYear) {
         this.viz1.select('.stat-label text').text('');
         this.viz2.select('.stat-label text').text('');
         return;
@@ -4781,10 +4812,15 @@ var Graph = function () {
       var medalDatum = this.currentEventData.find(function (d) {
         return d.year == _this8.hoveredYear && d.medal === 'GOLD';
       });
+      if (!medalDatum) {
+        this.viz1.select('.stat-label text').text('');
+        this.viz2.select('.stat-label text').text('');
+        return;
+      }
       var asterix = this.isDoubleYear(medalDatum) ? '*' : '';
       var yearDatum = this.years[this.hoveredYear];
-      var text0 = 'Time: ' + medalDatum.timeFormat + asterix + ' | Althlete: ' + medalDatum.athlete;
-      var text1 = yearDatum.location + ' | Altitude: ' + yearDatum.altitude + 'm';
+      var text0 = '' + medalDatum.timeFormat + asterix + ' | ' + medalDatum.athlete;
+      var text1 = yearDatum.location + ' | ' + yearDatum.altitude + 'm';
       this.viz1.select('.stat-label text').text(text0);
       this.viz2.select('.stat-label text').text(text1);
     }
@@ -4793,9 +4829,14 @@ var Graph = function () {
     value: function drawFlag() {
       var _this9 = this;
 
+      var flagGroup = this.viz2.select('.flag');
+      if (!this.hoveredYear) {
+        this.hide(flagGroup);
+        return;
+      }
+      this.show(flagGroup);
       var yearData = this.years[this.hoveredYear];
       var apex = this.getApex(yearData.year, yearData.altitude);
-      var flagGroup = this.viz2.select('.flag');
       flagGroup.attr('transform', 'translate(' + apex.x + ', ' + apex.y + ')');
       flagGroup.select('line').attr('x1', 0).attr('y1', 3).attr('x2', 0).attr('y2', 0).transition().attr('y2', -poleHeight - flagHeight);
       flagGroup.select('.flying-flag').interrupt().attr('transform', 'translate(0, 0)').attr('d', 'M0 ' + -flagHeight + ' Q0 ' + (-flagHeight - flagWaviness) + ', 0 ' + -flagHeight + ' Q0 ' + (-flagHeight + flagWaviness) + ', 0 ' + -flagHeight + ' L0 0 Q0 0, 0 0 Q0 0, 0 0 Z').transition().attr('transform', 'translate(0, ' + -poleHeight + ')').on('end', function () {
@@ -4843,6 +4884,52 @@ var Graph = function () {
         }
       }
       return false;
+    }
+  }, {
+    key: 'calculateRibbon',
+    value: function calculateRibbon(pathIdx) {
+      var ratio = medalWidth / ribbonHeight;
+      if (pathIdx === 1) {
+        return 'M' + ribbonRoot + ' ' + ribbonHeight + ' L' + (-medalWidth + ribbonRoot) + ' 0 L' + -medalWidth + ' ' + ribbonRoot + ' L0 ' + (ribbonHeight + ribbonRoot) + ' Z';
+      } else if (pathIdx === 2) {
+        return 'M' + -ribbonRoot + ' ' + ribbonHeight + ' L' + (medalWidth - ribbonRoot) + ' 0 L' + medalWidth + ' ' + ribbonRoot + ' L0 ' + (ribbonHeight + ribbonRoot) + ' Z';
+      } else if (pathIdx === 3) {
+        return 'M0 0 L' + (-medalWidth + ribbonRoot) + ' 0 L' + (-medalWidth + ribbonRoot + ribbonWidth * ratio) + ' ' + ribbonWidth + ' L' + (medalWidth - ribbonWidth * ratio - ribbonRoot) + ' ' + ribbonWidth + ' L' + (medalWidth - ribbonRoot) + ' 0 Z';
+      }
+    }
+  }, {
+    key: 'calculateStarPoints',
+    value: function calculateStarPoints(centerX, centerY, arms, outerRadius, innerRadius) {
+      // https://dillieodigital.wordpress.com/2013/01/16/quick-tip-how-to-draw-a-star-with-svg-and-javascript/
+      var results = '';
+      var angle = Math.PI / arms;
+      for (var i = 0; i < 2 * arms; i++) {
+        var r = (i & 1) == 0 ? outerRadius : innerRadius;
+        var currX = centerX + Math.cos(i * angle) * r;
+        var currY = centerY + Math.sin(i * angle) * r;
+        if (i == 0) {
+          results = currX + "," + currY;
+        } else {
+          results += ", " + currX + "," + currY;
+        }
+      }
+      return results;
+    }
+  }, {
+    key: 'hide',
+    value: function hide(el) {
+      el.style('visibility', 'hidden');
+    }
+  }, {
+    key: 'show',
+    value: function show(el) {
+      el.style('visibility', 'visible');
+    }
+  }, {
+    key: 'cancelAnimations',
+    value: function cancelAnimations() {
+      this.viz2.select('.flag').select('.flying-flag').interrupt();
+      this.medalGroup.interrupt();
     }
   }]);
 
@@ -4914,7 +5001,7 @@ exports.i(__webpack_require__(84), "");
 exports.push([module.i, "@import url(https://fonts.googleapis.com/css?family=Quicksand:400,500);", ""]);
 
 // module
-exports.push([module.i, "body {\n  font-family: 'Quicksand', sans-serif;\n  font-size: 20px;\n  color: #1f1913;\n  background: #ced6d1;\n}\n\na, a:visited {\n  color: #314142;\n}\n\n.emphasis {\n  font-weight: 500;\n}\n\n.wrapper {\n  width: 90%;\n  margin-left: 5%;\n  margin-bottom: 50px;\n}\n\nheader {\n  padding: 20px;\n  margin: 0px 30px 0 30px;\n}\n\n#skater {\n  display: inline-block;\n  transform: translateY(5px);\n  margin-right: 10px;\n  height: 60px;\n}\n\nh1 {\n  font-size: 26px;\n  text-transform: uppercase;\n  padding-right: 20px;\n  line-height: 140%;\n  letter-spacing: 0.05em;\n  font-weight: 500;\n  display: inline-block;\n}\n\n.header-2 {\n  margin-top: 16px;\n}\n\n.header-2 p {\n  margin-bottom: 16px;\n  font-size: 16px;\n  line-height: 140%;\n}\n\nselect {\n  margin: 0 30px;\n  min-width: 350px;\n  background: #FCFAF4;\n  font-family: 'Quicksand', sans-serif;\n  font-size: 14px;\n}\n\n.yAxis-label text{\n  font-size: 16px;\n  letter-spacing: 0.08em;\n  font-weight: 500;\n}\n\n.viz {\n  margin-bottom: 20px;\n}\n\n.viz-1 circle {\n  fill: #ECE7D8;\n  stroke: #314142;\n}\n.viz-1 circle.selected {\n  fill: #EEBF48;\n}\n\n.altitudes {\n  opacity: 0.92;\n}\n\n.mountain {\n  fill: #314142;\n}\n\n.snow {\n  fill: #F8F4E4;\n}\n\n.xAxis path, .yAxis path, .tick line {\n  stroke: #1f1913;\n}\n.tick text {\n  fill: #1f1913;\n}\n\n.flag line {\n  stroke: #1f1913;\n}\n\n.flag .flying-flag {\n  fill: #EEBF48;\n  stroke: #1f1913;\n}\n\n.notes {\n  font-size: 14px;\n  line-height: 140%;\n}\n\ntext {\n  font-family: 'Quicksand', sans-serif;\n  font-size: 12px;\n  font-weight: 500;\n}\n\n.stat-label text{\n  font-size: 14px;\n}\n\n@media only screen and (max-width: 670px) {\n  .xAxis .tick:nth-child(odd) {\n    display: none;\n  }\n  select {\n    min-width: 300px;\n  }\n  .wrapper {\n    width: 96%;\n    margin-left: 2%;\n    margin-bottom: 50px;\n  }\n}\n", ""]);
+exports.push([module.i, "body {\n  font-family: 'Quicksand', sans-serif;\n  font-size: 20px;\n  color: #1f1913;\n  background: #ced6d1;\n}\n\na, a:visited {\n  color: #314142;\n}\n\n.emphasis {\n  font-weight: 500;\n}\n\n.wrapper {\n  width: 90%;\n  margin-left: 5%;\n  margin-bottom: 50px;\n}\n\nheader {\n  padding: 20px;\n  margin: 0px 30px 0 30px;\n}\n\n#skater {\n  display: inline-block;\n  transform: translateY(5px);\n  margin-right: 10px;\n  height: 60px;\n}\n\nh1 {\n  font-size: 26px;\n  text-transform: uppercase;\n  padding-right: 20px;\n  line-height: 140%;\n  letter-spacing: 0.05em;\n  font-weight: 500;\n  display: inline-block;\n  color: #314142;\n}\n\n.header-2 {\n  margin-top: 16px;\n}\n\n.header-2 p {\n  margin-bottom: 16px;\n  font-size: 16px;\n  line-height: 140%;\n}\n\nselect {\n  margin: 0 30px;\n  min-width: 350px;\n  background: #FCFAF4;\n  font-family: 'Quicksand', sans-serif;\n  font-size: 14px;\n}\n\n.yAxis-label text{\n  font-size: 16px;\n  letter-spacing: 0.08em;\n  font-weight: 500;\n}\n\n.viz {\n  margin-bottom: 20px;\n}\n\n.viz-1 circle {\n  fill: #ECE7D8;\n  stroke: #314142;\n}\n.viz-1 circle.selected {\n  fill: #EEBF48;\n}\n\n.altitudes {\n  opacity: 0.92;\n}\n\n.mountain {\n  fill: #314142;\n}\n\n.snow {\n  fill: #F8F4E4;\n}\n\n.xAxis path, .yAxis path, .tick line {\n  stroke: #1f1913;\n}\n.tick text {\n  fill: #1f1913;\n}\n\n.path-1, .path-2 {\n  stroke: #1f1913;\n  fill: #0CA5B0;\n}\n.path-3 {\n  stroke: #1f1913;\n  fill: #08737B;\n}\n.star {\n  stroke: #1f1913;\n  fill: #EEDB48;\n}\n.viz-1 circle.medal-circle {\n  stroke: #1f1913;\n  fill: #EEBF48;\n}\n\n.flag line {\n  stroke: #1f1913;\n}\n\n.flag .flying-flag {\n  fill: #EEBF48;\n  stroke: #1f1913;\n}\n\n.notes {\n  font-size: 14px;\n  line-height: 140%;\n}\n\ntext {\n  font-family: 'Quicksand', sans-serif;\n  font-size: 12px;\n  font-weight: 500;\n}\n\n.stat-label text{\n  font-size: 14px;\n}\n\n@media only screen and (max-width: 670px) {\n  .xAxis .tick:nth-child(odd) {\n    display: none;\n  }\n  select {\n    min-width: 280px;\n  }\n  .wrapper {\n    width: 96%;\n    margin-left: 2%;\n    margin-bottom: 50px;\n  }\n}\n", ""]);
 
 // exports
 
@@ -10276,7 +10363,7 @@ var slice = Array.prototype.slice;
 /* 237 */
 /***/ (function(module, exports) {
 
-module.exports = "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAxNi4wLjAsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+DQo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4Ig0KCSB3aWR0aD0iNjRweCIgaGVpZ2h0PSI2NHB4IiB2aWV3Qm94PSIwIDAgNjQgNjQiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDY0IDY0IiB4bWw6c3BhY2U9InByZXNlcnZlIj4NCjxwYXRoIGZpbGw9IiMxZjE5MTMiIGQ9Ik00NC4xNiwyNC41NzZjMC0yLjc1MiwyLjI0LTQuOTkyLDQuOTkyLTQuOTkyczQuOTkyLDIuMjQsNC45OTIsNC45OTJzLTIuMjQsNC45OTItNC45OTIsNC45OTINCglTNDQuMTYsMjcuMzI4LDQ0LjE2LDI0LjU3NnogTTI5LjMxMiw1Ny41MzZ2LTEuMzQ1SDE3LjZ2MS4zNDVIMjkuMzEyeiBNMzYuNDgsMjcuMzI4YzAuOTU5LDAuOTYsMi41NiwwLjk2LDMuNTIsMHMwLjk2LTIuNTYsMC0zLjUyDQoJTDIzLjQyNCw3LjE2OGMtMC45Ni0wLjk2LTIuNTYtMC45Ni0zLjUyLDBzLTAuOTYsMi41NiwwLDMuNTJMMzYuNDgsMjcuMzI4eiBNNTAuMzY4LDQwLjE5MWgxMS4xMzZjMS40MDgsMCwyLjQ5Ni0xLjE1MSwyLjQ5Ni0yLjQ5Ng0KCWMwLTEuMzQ0LTEuMTUyLTIuNDk1LTIuNDk2LTIuNDk1SDUxLjM5M2wtMi40MzMtMi40MzNoLTcuMTA0bDYuNzg1LDYuNzIxQzQ5LjA4OCwzOS45MzYsNDkuNjY0LDQwLjE5MSw1MC4zNjgsNDAuMTkxeiBNMjguOCwzOS4xMDQNCglsLTcuMjk2LDEyLjYwOGMtMC43MDQsMS4yMTYtMC4yNTYsMi43NTIsMC44OTYsMy40NTZjMS4yMTYsMC43MDQsMi43NTIsMC4yNTYsMy40NTYtMC44OTZsOC4yNTUtMTQuMzM2DQoJYzAuNTc2LTEuMDIzLDAuMzg1LTIuMzA0LTAuNDQ3LTMuMDcybC05LjYtOS42NjNjLTAuOTYtMC45Ni0yLjU2LTAuOTYtMy41Miwwcy0wLjk2LDIuNTYsMCwzLjUyTDI4LjgsMzkuMTA0eiBNNS44MjQsNDkuNjY0DQoJbDEuMTUyLTAuNjQxTDEuMTUyLDM4LjkxMkwwLDM5LjU1Mkw1LjgyNCw0OS42NjR6IE02Ljk3Niw0MC4wNjRjLTEuNDA4LDAtMi40OTYsMS4xNTEtMi40OTYsMi40OTZjMCwxLjQwNywxLjE1MiwyLjQ5NiwyLjQ5NiwyLjQ5Ng0KCWgxNS4yMzJjMS40MDgsMCwyLjQ5Ni0xLjE1MiwyLjQ5Ni0yLjQ5NnYtNS42MzNsLTQuOTkyLTQuOTkydjguMTI4bDAsMCIvPg0KPC9zdmc+DQo="
+module.exports = "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAxNi4wLjAsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+DQo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4Ig0KCSB3aWR0aD0iNjRweCIgaGVpZ2h0PSI2NHB4IiB2aWV3Qm94PSIwIDAgNjQgNjQiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDY0IDY0IiB4bWw6c3BhY2U9InByZXNlcnZlIj4NCjxwYXRoIGZpbGw9IiMzMTQxNDIiIGQ9Ik00NC4xNiwyNC41NzZjMC0yLjc1MiwyLjI0LTQuOTkyLDQuOTkyLTQuOTkyczQuOTkyLDIuMjQsNC45OTIsNC45OTJzLTIuMjQsNC45OTItNC45OTIsNC45OTINCglTNDQuMTYsMjcuMzI4LDQ0LjE2LDI0LjU3NnogTTI5LjMxMiw1Ny41MzZ2LTEuMzQ1SDE3LjZ2MS4zNDVIMjkuMzEyeiBNMzYuNDgsMjcuMzI4YzAuOTU5LDAuOTYsMi41NiwwLjk2LDMuNTIsMHMwLjk2LTIuNTYsMC0zLjUyDQoJTDIzLjQyNCw3LjE2OGMtMC45Ni0wLjk2LTIuNTYtMC45Ni0zLjUyLDBzLTAuOTYsMi41NiwwLDMuNTJMMzYuNDgsMjcuMzI4eiBNNTAuMzY4LDQwLjE5MWgxMS4xMzZjMS40MDgsMCwyLjQ5Ni0xLjE1MSwyLjQ5Ni0yLjQ5Ng0KCWMwLTEuMzQ0LTEuMTUyLTIuNDk1LTIuNDk2LTIuNDk1SDUxLjM5M2wtMi40MzMtMi40MzNoLTcuMTA0bDYuNzg1LDYuNzIxQzQ5LjA4OCwzOS45MzYsNDkuNjY0LDQwLjE5MSw1MC4zNjgsNDAuMTkxeiBNMjguOCwzOS4xMDQNCglsLTcuMjk2LDEyLjYwOGMtMC43MDQsMS4yMTYtMC4yNTYsMi43NTIsMC44OTYsMy40NTZjMS4yMTYsMC43MDQsMi43NTIsMC4yNTYsMy40NTYtMC44OTZsOC4yNTUtMTQuMzM2DQoJYzAuNTc2LTEuMDIzLDAuMzg1LTIuMzA0LTAuNDQ3LTMuMDcybC05LjYtOS42NjNjLTAuOTYtMC45Ni0yLjU2LTAuOTYtMy41Miwwcy0wLjk2LDIuNTYsMCwzLjUyTDI4LjgsMzkuMTA0eiBNNS44MjQsNDkuNjY0DQoJbDEuMTUyLTAuNjQxTDEuMTUyLDM4LjkxMkwwLDM5LjU1Mkw1LjgyNCw0OS42NjR6IE02Ljk3Niw0MC4wNjRjLTEuNDA4LDAtMi40OTYsMS4xNTEtMi40OTYsMi40OTZjMCwxLjQwNywxLjE1MiwyLjQ5NiwyLjQ5NiwyLjQ5Ng0KCWgxNS4yMzJjMS40MDgsMCwyLjQ5Ni0xLjE1MiwyLjQ5Ni0yLjQ5NnYtNS42MzNsLTQuOTkyLTQuOTkydjguMTI4bDAsMCIvPg0KPC9zdmc+DQo="
 
 /***/ }),
 /* 238 */
