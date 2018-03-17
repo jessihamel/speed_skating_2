@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CleanWebpackPlugin = require('clean-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   entry: path.resolve(__dirname,'src/index.js'),
@@ -42,7 +43,7 @@ module.exports = {
           loader: 'url-loader',
           options: {
             limit: 8000, // Convert images < 8kb to base64 strings
-            name: 'images/[path][name].[ext]'
+            name: 'images/[name].[ext]'
           }
         }]
       }
@@ -53,6 +54,9 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: 'src/index.html',
       filename: 'index.html'
-    })
+    }),
+    new CopyWebpackPlugin([
+      {from:'src/images',to:'images'}
+    ]),
   ],
 };

@@ -11,7 +11,7 @@ import yeti from './yeti.svg'
 
 const eventsToInclude = ['500m Men','1000m Men','1500m Men','5000m Men','10000m Men','500m Women','1000m Women','1500m Women','3000m Women','5000m Women']
 const yearsWith2X500M = [1998, 2002, 2006, 2010, 2014]
-const margin = {top: 40, bottom: 52, left: 80, right: 40}
+const margin = {top: 42, bottom: 52, left: 80, right: 30}
 const radius = 9
 const largeRadius = 12
 const flagHeight = 15
@@ -19,7 +19,7 @@ const poleHeight = 12
 const flagWidth = 22
 const flagWaviness = 3
 const smallWidth = 600
-const ribbonHeight = 30
+const ribbonHeight = 32
 const medalWidth = 20
 const ribbonWidth = 10
 const ribbonRoot = ribbonWidth / Math.sqrt(2)
