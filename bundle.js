@@ -4494,7 +4494,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 var eventsToInclude = ['500m Men', '1000m Men', '1500m Men', '5000m Men', '10000m Men', '500m Women', '1000m Women', '1500m Women', '3000m Women', '5000m Women'];
 var yearsWith2X500M = [1998, 2002, 2006, 2010, 2014];
-var margin = { top: 40, bottom: 52, left: 80, right: 40 };
+var margin = { top: 42, bottom: 52, left: 80, right: 30 };
 var radius = 9;
 var largeRadius = 12;
 var flagHeight = 15;
@@ -4502,7 +4502,7 @@ var poleHeight = 12;
 var flagWidth = 22;
 var flagWaviness = 3;
 var smallWidth = 600;
-var ribbonHeight = 30;
+var ribbonHeight = 32;
 var medalWidth = 20;
 var ribbonWidth = 10;
 var ribbonRoot = ribbonWidth / Math.sqrt(2);
@@ -10369,7 +10369,7 @@ module.exports = "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGlu
 /* 238 */
 /***/ (function(module, exports, __webpack_require__) {
 
-module.exports = __webpack_require__.p + "images/src/yeti.svg";
+module.exports = __webpack_require__.p + "images/yeti.svg";
 
 /***/ })
 /******/ ]);
